@@ -65,7 +65,7 @@ file.list <- list.files(
 )
 
 # Remove file extension
-names(file.list) <- tools::file_path_sans_ext(file.list)
+names(file.list) <- basename(tools::file_path_sans_ext(file.list))
 
 rawdf <- rbindlist(lapply(file.list, read_excel), idcol = "Experiment_ID")
 
@@ -451,7 +451,7 @@ p1_combined <- (p_cy3 + p_dapi + p_fitc) +
 
 #print(p1_combined)
 
-# 5. Save Plot 
+# Save Plot 
 ggsave(
   "Figure1_BoxPlot_FoldChange.png",
   p1_combined,
@@ -494,3 +494,5 @@ if(nrow(outliers_found) > 0) {
 }
 
 #---- Done --------------------------------------------------------------------
+
+cat("Complete!\n\n")
