@@ -1,5 +1,5 @@
 [![R](https://img.shields.io/badge/-script-276DC3.svg?style=flat&logo=R)](https://cran.r-project.org)
-[![Docker container build](https://github.com/KarlssonLaboratory/multiplexing_d.magna/actions/workflows/build-deplot-docker-container.yml/badge.svg)](https://github.com/KarlssonLaboratory/multiplexing_d.magna/actions/workflows/build-deploy-docker-container.yml)
+[![Docker container build](https://github.com/KarlssonLaboratory/multiplexing_d.magna/actions/workflows/build-deploy-docker-container.yml/badge.svg)](https://github.com/KarlssonLaboratory/multiplexing_d.magna/actions/workflows/build-deploy-docker-container.yml)
 
 # README
 
