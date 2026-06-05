@@ -58,15 +58,24 @@ color_palette <- c("DAPI" = "#3a86ff", "Cy3" = "#ff006e", "FITC" = "#38b000")
 #---- Import files ------------------------------------------------------------
 
 
-# 1. READ RAW DATA (and tag with filename as Experiment_ID)
-file.list <- list.files(pattern = '*.xls')
+file.list <- list.files(
+  path = "data",
+  pattern = '*.xls',
+  full.names = TRUE
+)
 
 # Remove file extension
 names(file.list) <- tools::file_path_sans_ext(file.list)
 
 rawdf <- rbindlist(lapply(file.list, read_excel), idcol = "Experiment_ID")
 
-# The size of a daphnia neonate is >10000 pixels, anything below is removed
+plate_maps <- read.csv("data/Plate_Layouts.csv")
+
+
+#---- Curate data -------------------------------------------------------------
+
+
+# The size of a daphnia neonate is >10000 pixels, anything below is removed to
 # avoid unintended analysis of artefacts.
 rows <- rawdf$`1_area` >= 10000
 df_filtered <- rawdf[rows, ]
@@ -82,9 +91,6 @@ cat(sprintf(
 RD <- df_filtered[, c('Experiment_ID', 'well_name', 'biggestobject_1_mean', 'biggestobject_2_mean', 'biggestobject_3_mean')]
 colnames(RD) <- c('Experiment_ID', 'Well', 'Cy3', 'DAPI', 'FITC')
 
-
-#------------------------------------------------------------------------------
-# 2. EXTRACT ROW LETTER 
 # Wells named "A01", "B03" etc => "A", "B"
 RD <- RD %>%
   mutate(Row = substr(Well, 1, 1))
@@ -96,76 +102,47 @@ Well_Summaries <- RD %>%
   group_by(Experiment_ID, Well, Row) %>%
   summarise(across(c(DAPI, Cy3, FITC), \(x) mean(x, na.rm = TRUE)), .groups = "drop")
 
-# 3. READ METADATA AND MERGE
-# Load the CSV you created
-plate_maps <- read.csv("Plate_Layouts.csv")
-
-# Check what IDs exist in your R data vs your CSV
-unique(Well_Summaries$Experiment_ID)
-unique(plate_maps$Experiment_ID)
-
-# Test if they intersect
-any(unique(Well_Summaries$Experiment_ID) %in% unique(plate_maps$Experiment_ID))
+# Sanity check platenames
+any(unique(basename(unique(Well_Summaries$Experiment_ID)) %in% unique(plate_maps$Experiment_ID)))
 
 # Merge the biological data with the experimental design
 RD_final <- Well_Summaries %>%
   left_join(plate_maps, by = c("Experiment_ID", "Row")) %>%
   filter(group != '' & group != 'Blank' & !is.na(group))
 
-#----
-# why is Blank removed?
-
-#----
-
-
-#==== refactor ====
-#groups <- unique(RD_final$group) # includes all in order
-
-# 2. Filter the data to only include these groups, and set the factor levels
-#RD_final <- RD_final %>%
-#  #filter(group %in% groups) %>%
-#  mutate(group = factor(group, levels = groups))
-
-#====
-
-# --- MANUAL GROUP SELECTION & ORDERING ---
-
-# 1. Define exactly which groups to keep, in the EXACT order you want them plotted.
-# -> Replace these example strings with your actual group names.
-# -> CRITICAL: Your control_group_name ("DMSO 0.2%") MUST be in this list!
+# Define exactly which groups to keep, order matters
 desired_groups <- c(
-  "Control",         # Usually put your vehicle control first
-  "12.5",      # Replace with your actual text
+  "Control",
+  "12.5",
   "50",
   "100",
-  "200"   # Add as many as you need, dropping the ones you don't
+  "200"
 )
 
-# 2. Filter the data to only include these groups, and set the factor levels
+# Filter the data to only include the groups, and set the factor levels
 RD_final <- RD_final %>%
   filter(group %in% desired_groups) %>%
   mutate(group = factor(group, levels = desired_groups))
 
-# --- 3. PREPARE DATA STREAMS ---
-
-# A. Long Format
+# Make long format table
 data_long_raw <- RD_final %>%
   pivot_longer(cols = c("DAPI", "Cy3", "FITC"), names_to = "channel", values_to = "intensity") %>%
   mutate(channel = factor(channel, levels = c("DAPI", "Cy3", "FITC"))) %>%
   mutate(obs_id = row_number())
 
-# B. Identify Extreme Outliers
+# Identify extreme outliers
 outliers_found <- data_long_raw %>%
   group_by(channel, group) %>%
   identify_outliers(intensity) %>%
   filter(is.extreme == TRUE) 
 
-# C. Clean Data (For Statistics & Boxplot)
+# Clean data
 data_clean <- data_long_raw %>%
   anti_join(outliers_found, by = "obs_id")
 
 
 #---- LMM STATISTICS MODULE (Mixed-Effects) -----------------------------------
+
 
 lmm_stats_list <- list()
 lmm_models <- list() # Store models for DHARMa diagnostics
@@ -179,12 +156,11 @@ for (chan in c("DAPI", "Cy3", "FITC")) {
     filter(channel == chan) %>%
     drop_na(intensity, group, Experiment_ID)
   
-  # 1. Fit Log-Normal Mixed Model & Store it
-  # We use log(intensity) with a standard lmer to handle fluorescence
+  # Fit Log-Normal Mixed Model
+  # log(intensity) is used w/ a standard lmer to handle fluorescence
   # distribution
   fit_log_mixed <- lmer(
     log(intensity) ~ group + (1 | Experiment_ID),
-    #log(intensity) ~ group + batch,
     data = chan_data,
     REML = TRUE
   )
@@ -193,14 +169,14 @@ for (chan in c("DAPI", "Cy3", "FITC")) {
   # expect boxes around zero with similar spread, 
   # no batch/plate should be off-zero
   #======================
-  chan_data$resid <- residuals(fit_log_mixed)
-  boxplot(resid ~ Experiment_ID, data = chan_data)
+  #chan_data$resid <- residuals(fit_log_mixed)
+  #boxplot(resid ~ Experiment_ID, data = chan_data)
 
   #==== linear model ====
-  data <- chan_data
-  data$Experiment_ID <- as.character(as.numeric(as.factor(data$Experiment_ID)))
-  res <- lm(log(intensity) ~ group * Experiment_ID, data)
-  plot(log(intensity) ~ group, data)
+  #data <- chan_data
+  #data$Experiment_ID <- as.character(as.numeric(as.factor(data$Experiment_ID)))
+  #res <- lm(log(intensity) ~ group * Experiment_ID, data)
+  #plot(log(intensity) ~ group, data)
   #======================
 
 
@@ -214,8 +190,8 @@ for (chan in c("DAPI", "Cy3", "FITC")) {
   #model_anova <- car::Anova(fit_log_mixed, type = "II", test.statistic = "F")
   #====
   
-  cat(paste("\n--- ANOVA for", chan, "---\n"))
-  print(model_anova)
+  #cat(paste("\n--- ANOVA for", chan, "---\n"))
+  #print(model_anova)
   
   # Format and store the ANOVA table
   anova_df <- as.data.frame(model_anova)
@@ -224,13 +200,13 @@ for (chan in c("DAPI", "Cy3", "FITC")) {
   anova_df <- anova_df %>% select(channel, Term, everything())
   anova_results_list[[length(anova_results_list) + 1]] <- anova_df
   
-  # 2. Run Dunnett's Post-Hoc via emmeans
+  # Dunnett's Post-Hoc via emmeans
   chan_means <- emmeans(fit_log_mixed, ~ group, type = "response")
   dunnett_res <- contrast(chan_means, method = "trt.vs.ctrl", ref = control_index)
 
   #==== validation ============================================================
-  # Because you used type = "response" on a log-scale model, the contrasts
-  # come back as ratios, not differences:
+  # type = "response" on a log-scale model: 
+  # the contrasts come back as ratios, not differences, that means:
   # 1.50 = 50% increase; 0.50 = 50% decrease
   #============================================================================
   
@@ -260,23 +236,23 @@ for (chan in c("DAPI", "Cy3", "FITC")) {
   lmm_stats_list[[length(lmm_stats_list) + 1]] <- res_df
 }
 
-# Bind all channels into the master significance dataframe for the plots
+# Bind all channels into dataframe, for plots
 final_sig_df <- if(length(lmm_stats_list) > 0) bind_rows(lmm_stats_list) else data.frame()
 final_anova_df <- bind_rows(anova_results_list)
 plot_subtitle <- "Significance: Log-Normal LMM (Mixed Effects) + Dunnett's Test"
 
 
 #---- DHARMa DIAGNOSTIC PLOTS -------------------------------------------------
-# 1. Open a high-resolution PNG file
+
+
 png(
   filename = "FigureS1_DHARMa_Diagnostics.png", 
   width = 12, height = 15, units = "in", res = 300
 )
 
-# 2. Set up grid canvas: Increased top margin for extra headroom
+# Set grid canvas
 par(mfrow = c(3, 3), mar = c(4, 4, 4.5, 2) + 0.1)
 
-# 3. Loop through saved models and plot
 for (chan in c("DAPI", "Cy3", "FITC")) {
   
   # Fetch the correct data for this specific channel
@@ -317,14 +293,15 @@ for (chan in c("DAPI", "Cy3", "FITC")) {
   mtext(paste(chan, "- Dispersion Test"), side = 3, line = 2.5, font = 2, adj = 0, cex = 1.2)
 }
 
-# 4. Close the device and reset canvas
 dev.off()
 par(mfrow = c(1, 1))
 print("Diagnostic plots successfully saved as 'FigureS1_DHARMa_Diagnostics.png'")
 
 
 #---- PLOT GENERATION (Normalized for Batch Effects) --------------------------
-# 1. Normalize data to Vehicle Control within each experiment
+
+
+# Normalize data within each experiment
 plot_data <- data_clean %>%
   group_by(Experiment_ID, channel) %>%
   mutate(
@@ -342,9 +319,10 @@ facet_names <- c(
   "FITC" = "Esterase Activity (Calcein AM)"
 )
 
-# 1. Define Highlight Settings
+# Highlight settings
 alpha_highlight <- c("DAPI" = 0.9, "Cy3" = 0.2, "FITC" = 0.2)
-# 2. Prepare Data for Labels (Using Fold Change max values)
+
+# find max
 max_y_values <- plot_data %>%
   group_by(channel) %>%
   summarise(max_y = max(fold_change, na.rm = TRUE), .groups = 'drop')
@@ -364,23 +342,21 @@ survival_text <- plate_maps %>%
   crossing(max_y_values) %>% 
   mutate(y_pos_surv = max_y * 1.12)
 
-# Map max Y coordinates to the lmmM significance df so the stars hover correctly
+# Map max Y coordinates to the LMM significance df so the stars hover correctly
 if(nrow(final_sig_df) > 0) {
-  # Using base R merge to bypass factor/character join mismatches
   final_sig_df <- merge(final_sig_df, max_y_values, by = "channel", all.x = TRUE)
   final_sig_df$y_pos_raw <- final_sig_df$max_y * 1.05
 }
 
-# 3. DEFINE THE PLOTTING FUNCTION
 create_plot <- function(target_channel, show_y_axis = TRUE) {
   
-  # Filter Data
+  # Filter
   sub_plot  <- plot_data %>% filter(channel == target_channel)
   sub_stats <- final_sig_df %>% filter(channel == target_channel)
   sub_surv  <- survival_text %>% filter(channel == target_channel)
   max_y     <- max(sub_plot$fold_change, na.rm = TRUE)
   
-  # --- LOGIC: Target FITC, DAPI or Cy3 ---
+  # Target DAPI only
   is_target  <- (target_channel == "DAPI") 
   
   # Styling Parameters
@@ -399,38 +375,48 @@ create_plot <- function(target_channel, show_y_axis = TRUE) {
     geom_hline(yintercept = 1.0, linetype = "dashed", color = "gray60", linewidth = 0.8) +
     
     # Boxplot (using fold_change)
-    geom_boxplot(data = sub_plot, 
-                 aes(x = group, y = fold_change), 
-                 fill = color_palette[target_channel], 
-                 alpha = current_alpha, 
-                 linewidth = box_linewidth,
-                 outlier.shape = NA) +
+    geom_boxplot(
+      data = sub_plot, 
+      aes(x = group, y = fold_change), 
+      fill = color_palette[target_channel], 
+      alpha = current_alpha, 
+      linewidth = box_linewidth,
+      outlier.shape = NA
+    ) +
     
-    # Jittered Points (Colored by Experiment_ID)
-    geom_jitter(data = sub_plot, 
-                aes(x = group, y = fold_change, color = Experiment_ID, shape = Experiment_ID), 
-                width = 0.2, 
-                size = 2.5,
-                alpha = current_alpha) + 
-    
+    # Color by Experiment_ID
+    geom_jitter(
+      data = sub_plot, 
+      aes(x = group, y = fold_change, color = Experiment_ID, shape = Experiment_ID), 
+      width = 0.2, 
+      size = 2.5,
+      alpha = current_alpha
+    ) + 
+      
     # High-contrast colorblind-friendly palette for the dots
     scale_color_viridis_d(option = "magma", end = 0.8) +
     
     # Text: Stats Stars (Using the merged y_pos_raw)
-    geom_text(data = sub_stats, aes(x = group, y = y_pos_raw, label = label), 
-              fontface = "bold", size = 8) + 
+    geom_text(
+      data = sub_stats, aes(x = group, y = y_pos_raw, label = label), 
+      fontface = "bold", size = 8
+    ) + 
     
     # Text: Survival Rates
-    geom_text(data = sub_surv, aes(x = group, y = max_y * 1.15, label = label), 
-              fontface = "italic", size = 3.5) +
+    geom_text(
+      data = sub_surv, aes(x = group, y = max_y * 1.15, label = label), 
+      fontface = "italic", size = 3.5
+    ) +
     
     scale_y_continuous(expand = expansion(mult = c(0.05, 0.20))) +
     
-    labs(title = current_title, 
-         x = "µg/L", 
-         y = if(show_y_axis) "Fold Change (vs Control)" else "",
-         color = "Replicate Run:",
-         shape = "Replicate Run:") + # Consolidate legends
+    labs(
+      title = current_title, 
+      x = "µg/L", 
+      y = if(show_y_axis) "Fold Change (vs Control)" else "",
+      color = "Replicate Run:",
+      shape = "Replicate Run:"
+    ) +
     
     # Global Theme 
     pub_theme + 
@@ -448,12 +434,12 @@ create_plot <- function(target_channel, show_y_axis = TRUE) {
   
   return(p)
 }
-# 4. GENERATE & COMBINE
+
 p_cy3  <- create_plot("Cy3", show_y_axis = TRUE)
 p_dapi <- create_plot("DAPI", show_y_axis = FALSE)
 p_fitc <- create_plot("FITC", show_y_axis = FALSE)
 
-# Combine with Patchwork (Fixed Operator Precedence!)
+# Combine plots
 p1_combined <- (p_cy3 + p_dapi + p_fitc) +
   plot_layout(ncol = 3, guides = "collect") +
   plot_annotation(
@@ -463,24 +449,31 @@ p1_combined <- (p_cy3 + p_dapi + p_fitc) +
   ) & 
   theme(legend.position = "bottom")
 
-print(p1_combined)
+#print(p1_combined)
 
 # 5. Save Plot 
-ggsave("Figure1_BoxPlot_FoldChange.png", p1_combined, width = 15, height = 8, dpi = 300)
+ggsave(
+  "Figure1_BoxPlot_FoldChange.png",
+  p1_combined,
+  width = 15,
+  height = 8,
+  dpi = 300
+)
 
 
 #---- XPORT STATISTICAL TABLES & DATA -----------------------------------------
+
+
 cat(" > Exporting statistical tables...\n")
 
-# 1. Save Omnibus ANOVA Results (Analysis of Deviance from the Mixed Model)
+# Save anova results
 if(nrow(final_anova_df) > 0) {
   write.csv(final_anova_df, "Stats_LMM_ANOVA_Results.csv", row.names = FALSE)
 }
 
-# 2. Save Dunnett's Post-Hoc Results (P-values and significance stars)
+# Save Dunnett's posthoc results
 if(nrow(final_sig_df) > 0) {
   
-  # Safely select and rename columns regardless of what emmeans named the test statistics
   export_sig_df <- final_sig_df %>%
     rename(Treatment = group, 
            P_Value = p_val,
@@ -492,10 +485,10 @@ if(nrow(final_sig_df) > 0) {
   write.csv(export_sig_df, "Stats_LMM_Dunnett_Results.csv", row.names = FALSE)
 }
 
-# 3. Save the Normalized Data (Highly useful if you ever need to plot in GraphPad Prism)
+# save normalised data
 write.csv(plot_data, "Processed_Normalized_Plot_Data.csv", row.names = FALSE)
 
-# 4. Save Outliers List (For your audit trail / methods section)
+# save outliers
 if(nrow(outliers_found) > 0) {
   write.csv(outliers_found, "Stats_Removed_Outliers.csv", row.names = FALSE)
 }
