@@ -17,13 +17,13 @@ During the submission process the dataset can be obtained by contacting Cedric A
 ```sh
 # apptainer
 apptainer exec \
-  docker://ghcr.io/karlssonlaboratory/multiplexing_d.magna:1b75cfc \
+  docker://ghcr.io/karlssonlaboratory/multiplexing_d.magna:a580599 \
   Rscript bin/LLM.R
 
 # docker
 docker run --rm \
   -v $(pwd):/data \
-  ghcr.io/karlssonlaboratory/multiplexing_d.magna:1b75cfc \
+  ghcr.io/karlssonlaboratory/multiplexing_d.magna:a580599 \
   Rscript bin/LLM.R
 ```
 
