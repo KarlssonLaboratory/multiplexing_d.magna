@@ -5,6 +5,36 @@
 
 This project uses a small planktonic crustaceans (_Daphnia_), 0.2-6.0 mm. A _Daphnia_ is transparent are perfect for staining with various dyes able to penetrate into the tissues. Dyes can stain proteins, membranes, molecules etc and are detected with flourescece images. By treating the _Daphnia_ with different toxic compounds we can compare the differences of flourescence between the groups and understand which tissues, molecules are affected by the treatment.
 
+## Raw data
+
+During the submission process the dataset can be obtained by contacting Cedric Abele <Cedric.Abele@aces.su.se>. Upon publication the dataset will be included in the repo.
+
+## Reproduce the results
+
+> [!IMPORTANT]
+> Make sure the dataset is located inside `data/`
+
+```sh
+# apptainer
+apptainer exec \
+  docker://ghcr.io/karlssonlaboratory/multiplexing_d.magna:1b75cfc \
+  Rscript bin/LLM.R
+
+# docker
+docker run --rm \
+  -v $(pwd):/data \
+  ghcr.io/karlssonlaboratory/multiplexing_d.magna:1b75cfc \
+  Rscript bin/LLM.R
+```
+
+## Reproducibility
+
+A docker container holding the environment is produced within the repo and can be accessed [here](https://github.com/karlssonlaboratory/multiplexing_d.magna/pkgs/container/multiplexing_d.magna).
+
+The environment setup can be inspected here: [Dockerfile](./Dockerfile).
+
+## Experimental design
+
 The experiment is setup in plates of 8 x 12 (96 wells), each well holds one _Daphnia_, with each row containing individuals with the same treatment, replicates. Each well translate into a fluorescence intensity values. These values are log2-transformed to correct for right-skewed data distribution and make the distribution normalised. In total, three replication of the plates were ran, giving us a batch effect.
 
 We fitted a Linear Mixed-effect Model (LMM), as the model handles non-independent (dependent) observations, where each well are dependent on the plate which has confounding effects like imaging session (laser power, exposure etc), staining batch, environmental noise (person pipetted etc).
@@ -12,6 +42,8 @@ We fitted a Linear Mixed-effect Model (LMM), as the model handles non-independen
 > So if plate 2 happened to have slightly brighter staining overall, every well on plate 2 inherits that brightness. The wells aren't giving us independent information about the underlying biology. This is called **clustering** or **pseudo-replication**.
 
 Groups was considered as **fixed effects**, while experimental replicates were considered as **random effect** to account for inter-plate variability. Model validity and adherence to statistical assumptions (e.g., residual uniformity and homoscedasticity) were verified using simulated residual diagnostics (DHARMa R-package). Overall group effects were evaluated using Analysis of Deviance (Type II Wald chi-square tests) followed by Dunnett's post-hoc test to compare each treatment group against the control.
+
+<!--
 
 ```
 # data table sample:
@@ -45,38 +77,4 @@ fit_log_mixed <- lme4::lmer(
 )
 ```
 
-
-## Raw data
-
-During the submission process the dataset can be obtained by contacting Cedric Abele <Cedric.Abele@aces.su.se>. Upon publication the dataset will be included in the repo.
-
-## Reproduce the results
-
-> [!IMPORTANT]
-> Make sure the dataset is located inside `data/`
-
-```sh
-# apptainer
-apptainer exec \
-  docker://ghcr.io/karlssonlaboratory/multiplexing_d.magna:1b75cfc \
-  Rscript bin/LLM.R
-
-# docker
-docker run --rm \
-  -v $(pwd):/data \
-  ghcr.io/karlssonlaboratory/multiplexing_d.magna:1b75cfc \
-  Rscript bin/LLM.R
-```
-
-## Reproducibility
-
-A docker container holding the environment is produced within the repo and can be accessed here: https://github.com/karlssonlaboratory/multiplexing_d.magna/pkgs/container/multiplexing_d.magna. The environment setup can be inspected here: [Dockerfile](./Dockerfile).
-
----
-
-
-The size of a daphnia neonate is >10000 pixels, which was set as a threshold in the whole body analysis with R to avoid unintended analysis of artefacts.
-
-From the average intensity data per z-level, an average per individual/well was calculated and extreme outliers (3x interquartile range) were removed from the statistical analysis.
-
-For visual representation, raw fluorescence intensities were normalized to the average of the control within their respective experiment. The R codes for plotting figures and performing the statistical analysis can be found here: (https://github.com/KarlssonLaboratory/multiplexing_d.magna). Composite fluorescence images (DAPI, Cy3 and FITC channel) were generated using ImageJ Fiji and the QuickFigure Plugin (Figure 2).
+-->
