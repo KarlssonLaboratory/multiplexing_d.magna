@@ -3,7 +3,7 @@
 
 # README
 
-This project uses a small planktonic crustaceans (_Daphnia_), 0.2-6.0 mm. A _Daphnia_ is transparent are perfect for staining with various dyes able to penetrate into the tissues. Dyes can stain proteins, membranes, molecules etc and are detected with flourescece images. By treating the _Daphnia_ with different toxic compounds we can compare the differences of flourescence between the groups and understand which tissues, molecules are affected by the treatment.
+This project uses a small planktonic crustaceans (_Daphnia_), 0.2-6.0 mm. A _Daphnia_ is transparent are perfect for staining with various dyes able to penetrate into the tissues. Dyes can stain cell organelles, proteins, membranes, molecules etc and are detected with flourescece images. By treating the _Daphnia_ with different toxic compounds we can compare the differences of flourescence between the groups and understand which tissues, molecules are affected by the treatment.
 
 ## Raw data
 
